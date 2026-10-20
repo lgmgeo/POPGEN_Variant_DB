@@ -13,11 +13,6 @@ README_*
 tree*
 
 
-./tests/catalogue*
-./tests/examples*
-./tests/README*
-./tree*
-
 # Python
 __pycache__/
 *.py[cod]
