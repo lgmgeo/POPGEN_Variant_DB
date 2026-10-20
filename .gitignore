@@ -1,0 +1,46 @@
+.ruff_cache
+.vscode
+
+# Excluded project folders
+David_Salgado/
+DuckDB/
+old_scripts/
+
+# Excluded documentation drafts
+README_*
+
+# Excluded local tree files
+tree*
+
+
+./tests/catalogue*
+./tests/examples*
+./tests/README*
+./tree*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Data & DB (Crucial !)
+data/
+db/
+logs/
+*.db
+*.parquet
+*.vcf.gz
+*.bcf
+*.tbi
+*.csi
+
+# OS
+.DS_Store
+
+# Allow synthetic test data
+!tests/synthetic_catalogue_snvindel.200variants.vcf.gz
+!tests/synthetic_catalogue_snvindel.200variants.vcf.gz.csi
+

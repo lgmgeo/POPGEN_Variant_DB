@@ -1,0 +1,10 @@
+# Core bioinformatics processing
+pysam>=0.22.0
+
+# Data handling and high-performance storage
+pyarrow>=14.0.0
+pandas>=2.0.0
+polars>=0.20.0
+
+# Fast analytical database engine
+duckdb>=0.9.0
