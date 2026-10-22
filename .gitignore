@@ -24,7 +24,6 @@ ENV/
 # Data & DB (Crucial !)
 data/
 db/
-logs/
 *.db
 *.parquet
 *.vcf.gz

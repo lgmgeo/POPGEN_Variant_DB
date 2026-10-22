@@ -204,6 +204,10 @@ Notes:
         )
         sys.exit(1)
 
+    # Create the output directory if it does not exist.
+    db_output = Path(args.db_output)
+    db_output.parent.mkdir(parents=True, exist_ok=True)
+
     # Run the database builder
     builder = DatabaseBuilder(args.input_dir, args.db_output)
 
