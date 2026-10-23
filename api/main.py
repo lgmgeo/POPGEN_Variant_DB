@@ -1,5 +1,5 @@
 import os
-from contextlib import closing
+from contextlib import asynccontextmanager, closing
 from pathlib import Path
 
 import duckdb
@@ -7,12 +7,6 @@ from fastapi import FastAPI, HTTPException, Query
 
 # Database path can be overridden with the POPGEN_DB environment variable.
 DB_PATH = Path(os.environ.get("POPGEN_DB", "db/snvindel.200variants.db")).resolve()
-
-app = FastAPI(
-    title="POPGEN Variant API",
-    description="Read-only API for querying annotated genetic variants.",
-    version="0.1.0",
-)
 
 
 def get_connection():
@@ -23,8 +17,8 @@ def get_connection():
     return duckdb.connect(str(DB_PATH), read_only=True)
 
 
-@app.on_event("startup")
-def check_database():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Validate database availability and required columns at startup."""
     try:
         with closing(get_connection()) as con:
@@ -60,6 +54,16 @@ def check_database():
         raise RuntimeError(
             f"Cannot initialize API using database {DB_PATH}: {exc}"
         ) from exc
+
+    yield
+
+
+app = FastAPI(
+    title="POPGEN Variant API",
+    description="Read-only API for querying annotated genetic variants.",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
 
 @app.get("/health")
@@ -240,7 +244,7 @@ def search_variants(
 
     # Pagination is applied after DISTINCT, so it operates on unique variants.
     sql += """
-        ORDER BY chrom, pos, ref, alt
+        ORDER BY chrom, pos, ref, alt, id
         LIMIT ? OFFSET ?
     """
     params.extend([limit, offset])
