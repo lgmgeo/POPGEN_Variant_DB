@@ -9,10 +9,6 @@ old_scripts/
 # Excluded documentation drafts
 README_*
 
-# Excluded local tree files
-tree*
-
-
 # Python
 __pycache__/
 *.py[cod]
@@ -21,7 +17,7 @@ __pycache__/
 venv/
 ENV/
 
-# Data & DB (Crucial !)
+# Data & DB 
 data/
 db/
 *.db
@@ -30,6 +26,9 @@ db/
 *.bcf
 *.tbi
 *.csi
+
+# Logs
+*.log
 
 # OS
 .DS_Store
