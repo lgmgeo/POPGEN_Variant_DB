@@ -9,5 +9,10 @@ polars>=0.20.0
 # Fast analytical database engine
 duckdb>=0.9.0
 
+
+# API dependencies
+fastapi
+uvicorn[standard]
+
 # HTTP client for FastAPI tests
 httpx2
