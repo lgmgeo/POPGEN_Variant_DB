@@ -2,16 +2,9 @@
 """
 DuckDB Database Builder for Variant Datasets.
 
-This script converts a partitioned Parquet dataset into a single indexed
-DuckDB database file to enable high-performance analytical queries.
+This script converts a partitioned Parquet dataset into a single
+DuckDB database file (not indexed) to enable high-performance analytical queries.
 
-Key Features:
-------------
-- Automated indexing for: Coordinates, Transcripts (csq_Feature),
-  IDs, Genes (csq_SYMBOL), and Frequencies (AF).
-- Namespace-aware indexing (handles csq_ prefixes).
-- Timestamped logging for audit trails.
-- Robust error handling and schema enforcement.
 """
 
 import argparse
@@ -66,8 +59,8 @@ class DatabaseBuilder:
             # Connect to DuckDB (creates the file if it doesn't exist)
             self.conn = duckdb.connect(str(self.db_path))
 
-            # 1. Create the table from Parquet
-            logging.info("Step 1/3: Importing Parquet files into DuckDB table...")
+            # Create the table from Parquet
+            logging.info("Importing Parquet files into DuckDB table...")
             # hive_partitioning=True is critical to recognize the 'chrom' column from folder names
             self.conn.execute(f"""
                 CREATE TABLE variants AS 
@@ -78,38 +71,15 @@ class DatabaseBuilder:
             row_count = self.conn.execute("SELECT count(*) FROM variants").fetchone()[0]
             logging.info(f"Successfully imported {row_count} rows.")
 
-            # 2. Create Indexes
-            # IMPORTANT: We must use the exact column names produced by the converter
-            # (csq_ for CSQ fields)
-            logging.info("Step 2/3: Building performance indexes...")
-
-            # A. Search by coordinates (Mandatory columns)
-            logging.info(" -> Creating index: idx_chrom_pos (Coordinates)")
-            self.conn.execute("CREATE INDEX idx_chrom_pos ON variants (chrom, pos);")
-
-            # B. Search by Transcript (CSQ field)
-            logging.info(" -> Creating index: idx_feature (Transcripts)")
-            self.conn.execute("CREATE INDEX idx_feature ON variants (csq_Feature);")
-
-            # C. Search by Variant ID (Mandatory column)
-            logging.info(" -> Creating index: idx_id (Variant IDs)")
-            self.conn.execute("CREATE INDEX idx_id ON variants (id);")
-
-            # D. Search by Gene (CSQ field)
-            logging.info(" -> Creating index: idx_symbol (Genes)")
-            self.conn.execute("CREATE INDEX idx_symbol ON variants (csq_SYMBOL);")
-
-            # E. Search by Allele Frequency (INFO field)
-            logging.info(" -> Creating index: idx_af (Frequency)")
-            self.conn.execute("CREATE INDEX idx_af ON variants (AF);")
-           
-            # 3. Finalize
-            logging.info("Step 3/3: Finalizing and flushing to disk...")
+            # Finalize
+            logging.info("Finalizing and flushing to disk...")
             self.conn.execute("CHECKPOINT;")
 
             logging.info("================================================")
             logging.info("DATABASE BUILD COMPLETED SUCCESSFULLY.")
+            logging.info("Database created without performance indexes.")
             logging.info(f"Database file: {self.db_path}")
+            logging.info("Run build_indexes.py to create the indexes.")
             logging.info("================================================")
 
         except Exception as e:
@@ -125,12 +95,11 @@ class DatabaseBuilder:
 # =============================================================================
 
 
-
 def main():
     parser = argparse.ArgumentParser(
         prog="build_db.py",
         description=(
-            "Build an indexed DuckDB database from a partitioned "
+            "Build a DuckDB database (not indexed) from a partitioned "
             "Parquet variant dataset."
         ),
         epilog="""\
@@ -146,13 +115,6 @@ Input structure:
       ├── chrom=chr2/
       │   └── part-000001.parquet
       └── ...
-
-Database indexes:
-  idx_chrom_pos   Chromosome and position
-  idx_feature     Transcript (csq_Feature)
-  idx_id          Variant identifier
-  idx_symbol      Gene symbol (csq_SYMBOL)
-  idx_af          Allele frequency (AF)
 
 Notes:
   - The input Parquet dataset must contain the required columns.
@@ -215,7 +177,6 @@ Notes:
         builder.build()
     except Exception:
         sys.exit(1)
-
 
 
 if __name__ == "__main__":

@@ -5,7 +5,6 @@
 
 **POPGEN_Variant_DB** is a bioinformatics pipeline designed to convert large-scale genomic variant files (VCF/BCF) into highly optimized, denormalized Parquet datasets and DuckDB databases.
 
-The pipeline is specifically engineered to flatten complex VEP (Variant Effect Predictor) annotations, allowing for seamless, high-speed analytical queries across millions of variants and transcripts.
 
 ## Key Features
 
@@ -16,13 +15,16 @@ The pipeline is specifically engineered to flatten complex VEP (Variant Effect P
 - **Robust Typing**: Strict mapping of VCF INFO fields (Flag, Integer, Float, String) to PyArrow types.
 - **Resumability**: Integrated checkpointing system to resume interrupted processing.
 
-### DuckDB Indexing (`build_db.py`)
+### DuckDB Database Creation (`build_db.py`)
 - **High-Speed Analytics**: Converts Parquet partitions into a single, ultra-fast DuckDB database.
+
+### DuckDB Indexing (`build_indexes.py`)
 - **Automated Indexing**: Builds specialized indices for:
   - **Coordinates** (`chrom`, `pos`)
   - **Transcripts** (`Feature`)
   - **Variant IDs** (`id`)
   - **Genes** (`SYMBOL`, `AF`)
+
 
 ## Installation
 
@@ -124,12 +126,12 @@ The pipeline is specifically engineered to flatten complex VEP (Variant Effect P
         └── ...
     ```
 
-## Usage: DuckDB Indexing
+## DuckDB Database Creation (`build_db.py`)
 
 ```bash
 usage: build_db.py [-h] --input_dir DIR --db_output FILE
 
-Build an indexed DuckDB database from a partitioned Parquet variant dataset.
+Build a DuckDB database (not indexed) from a partitioned Parquet variant dataset.
 
 options:
 -h, --help            show this help message and exit
@@ -148,18 +150,7 @@ required arguments:
     python ./scripts/build_db.py --input_dir data/processed/snvindel.200variants/variants --db_output db/snvindel.200variants.db
     ```
 
-2. **Querying the DuckDB Database**
-    
-    Example: Find all variants in a specific gene
-    ```bash
-    duckdb db/snvindel.200variants.db -c "SELECT chrom, pos, ref, alt, csq_Consequence FROM variants WHERE csq_SYMBOL = 'DDX11L1'; "
-    ```
-    Example: Count total number of variants in the database
-    ```bash
-    duckdb db/snvindel.200variants.db -c "SELECT COUNT(*) FROM variants;"
-    ```
-
-3. **Structure of the DuckDB Database**
+2. **Structure of the DuckDB Database**
 
     ```bash
     duckdb db/snvindel.200variants.db -c "DESCRIBE variants;"
@@ -189,6 +180,67 @@ required arguments:
     │ csq_Amino_acids      varchar    csq_Codons           varchar                                                                 │
     └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
     ```
+
+## DuckDB Indexing (`build_indexes.py`)
+
+
+The `build_indexes.py` script creates indexes on an existing DuckDB database to accelerate queries on genomic coordinates, transcripts, variant IDs, gene symbols, and allele frequencies.
+
+Index creation is performed separately from database construction to allow memory usage to be controlled and indexing to be resumed if interrupted.
+
+### Indexes
+
+The script creates the following indexes on the `variants` table:
+
+| Index | Column(s) | Purpose |
+|---|---|---|
+| `idx_chrom_pos` | `chrom, pos` | Genomic coordinate queries |
+| `idx_feature` | `csq_Feature` | Transcript-based queries |
+| `idx_id` | `id` | Variant ID lookups |
+| `idx_symbol` | `csq_SYMBOL` | Gene symbol queries |
+| `idx_af` | `AF` | Allele frequency filtering |
+
+### Usage
+
+Run the script after creating the database with `build_db.py`:
+
+```bash
+python scripts/build_indexes.py \
+    --db db/snvindel.200variants.db
+```
+
+### Memory and performance settings
+
+Index creation can require substantial memory, particularly for large variant datasets. The script supports options to limit memory usage and configure the number of threads.
+
+For example:
+
+```bash
+python scripts/build_indexes.py \
+    --db db/snvindel.200variants.db \
+    --memory-limit 32GB \
+    --threads 2
+```
+
+Adjust these values according to the available system resources and the size of the database.
+
+### Resuming interrupted indexing
+
+The script checks which indexes already exist and skips them when indexing is restarted. Successfully created indexes are checkpointed, allowing the process to resume without rebuilding completed indexes.
+
+
+## Querying the DuckDB Database
+    
+    Example: Find all variants in a specific gene
+    ```bash
+    duckdb db/snvindel.200variants.db -c "SELECT chrom, pos, ref, alt, csq_Consequence FROM variants WHERE csq_SYMBOL = 'DDX11L1'; "
+    ```
+    Example: Count total number of variants in the database
+    ```bash
+    duckdb db/snvindel.200variants.db -c "SELECT COUNT(*) FROM variants;"
+    ```
+
+
 
 ## REST API
 
