@@ -31,7 +31,7 @@ INDEXES = [
     ("idx_feature", "csq_Feature", "Transcripts"),
     ("idx_id", "id", "Variant IDs"),
     ("idx_symbol", "csq_SYMBOL", "Genes"),
-    ("idx_af", "AF", "Allele frequency"),
+    # ("idx_af", "AF", "Allele frequency"),
 ]
 
 
