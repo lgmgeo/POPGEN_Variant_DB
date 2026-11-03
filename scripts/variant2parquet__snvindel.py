@@ -16,12 +16,12 @@ Key Features:
 
 Main outputs:
 -------------
-data/
+data/processed/<dataset_name>/
     variants/
         chrom=<value>/
             part-nnnnnn.parquet (Single denormalized table)
 
-id_index.parquet, gene_index.parquet, etc. (Lookup tables)
+id_index.parquet, gene_index.parquet, feature_index.parquet
 """
 
 import argparse
@@ -188,40 +188,42 @@ def get_csq_field_indices(header):
 
 def parse_csq_annotations(csq_value, target_indices):
     """
-    Version ultra-robuste pour extraire les champs CSQ.
+    Extract selected fields from VEP CSQ annotations.
     """
-    # 1. Si le champ est absent ou vide
+    # 1. Return an empty list if the CSQ field is missing or empty.
     if csq_value is None or csq_value == "" or csq_value == ".":
         return []
 
-    # 2. Normalisation : pysam peut renvoyer un tuple (si multi-transcrits)
-    # ou une string (si un seul transcrit). On veut toujours une liste d'annotations.
+    # 2. Normalize the input: pysam may return a tuple when multiple
+    # transcripts are present, or a string when there is only one.
+    # Always represent the annotations as a tuple.
     if isinstance(csq_value, tuple):
         all_annotations = csq_value
     elif isinstance(csq_value, str):
         all_annotations = (csq_value,)
     else:
-        # Cas rare où l'objet est d'un autre type
+        # Handle the rare case where the value has another data type.
         all_annotations = (str(csq_value),)
 
     rows = []
     for ann_string in all_annotations:
-        # On split la chaîne de l'annotation par le pipe
+        # Split the annotation string into fields using the pipe delimiter.
         fields = ann_string.split("|")
 
         row = {}
         for i, target_idx in enumerate(target_indices):
             field_name = CSQ_FIELDS_TO_KEEP[i]
 
-            # On vérifie que l'index existe bien dans la ligne splitée
+            # Check that the requested field index exists in the annotation.
             if target_idx < len(fields):
                 val = fields[target_idx]
-                # On ne stocke pas les chaînes vides comme des valeurs valides
+                # Store empty strings as None rather than valid values.
                 row[field_name] = val if val != "" else None
             else:
+                # Use None when the requested field is missing.
                 row[field_name] = None
 
-        # On n'ajoute la ligne que si elle contient au moins une info non-nulle
+        # Keep the row only if at least one field contains a non-null value.
         if any(v is not None for v in row.values()):
             rows.append(row)
 
@@ -235,7 +237,7 @@ def parse_csq_annotations(csq_value, target_indices):
 
 def build_combined_schema(vcf) -> pa.schema:
     """
-    Builds a robust, flattened schema containing both Variant metadata and CSQ fields.
+    Builds a flattened schema containing both Variant metadata and CSQ fields.
     Ensures no column name collisions and enforces strict typing based on VCF header.
     """
     # 1. Define core variant metadata fields (Mandatory fields)
@@ -251,7 +253,6 @@ def build_combined_schema(vcf) -> pa.schema:
         "filter": pa.field("filter", pa.string(), nullable=True),
         "variant_type": pa.field("variant_type", pa.string(), nullable=False),
     }
-
 
     # 2. Dynamically add INFO fields from the VCF/BCF header.
     info_names = set(vcf.header.info)
@@ -299,15 +300,15 @@ def build_combined_schema(vcf) -> pa.schema:
 
 def build_rows_flattened(record, annotations, info_definitions):
     """
-    Version corrigée pour s'assurer que les données de base (chrom, pos, etc.)
-    sont bien transmises avec les annotations CSQ.
+    Build flattened rows by combining variant-level information with CSQ annotations.
+    Each row corresponds to one transcript annotation for the variant.
     """
     ref = record.ref
     alt = record.alts[0] if record.alts else "."
     variant_key = f"{record.chrom}:{record.pos}:{ref}:{alt}"
     v_type = get_variant_type(ref, alt)
 
-    # On prépare le dictionnaire de base (toutes les infos du variant)
+    # Prepare the base dictionary containing all variant-level information.
     base_info = {
         "variant_key": variant_key,
         "chrom": record.chrom,
@@ -320,43 +321,48 @@ def build_rows_flattened(record, annotations, info_definitions):
         "variant_type": v_type,
     }
 
-    # On ajoute les champs INFO (non-CSQ)
-    for name, info_def in info_definitions.items():
-        column_name = (
-            f"info_{name}"
-            if name
-            in {
-                "variant_key",
-                "chrom",
-                "pos",
-                "id",
-                "ref",
-                "alt",
-                "qual",
-                "filter",
-                "variant_type",
-            }
-            else name
-        )
+    # Add the INFO fields (excluding CSQ)
+    # Warn if an INFO field conflicts with an existing base column.
+    reserved_columns = {
+        "variant_key",
+        "chrom",
+        "pos",
+        "id",
+        "ref",
+        "alt",
+        "qual",
+        "filter",
+        "variant_type",
+    }
 
-        base_info[column_name] = normalize_info_value(
+    for name, info_def in info_definitions.items():
+        if name in reserved_columns:
+            logging.warning(
+                "INFO field '%s' conflicts with a base column name. "
+                "Its value may overwrite the existing variant-level value.",
+                name,
+            )
+
+        # Keep the original INFO field name
+        base_info[name] = normalize_info_value(
             record.info.get(name),
             info_def,
             name,
         )
 
-    # On "aplatit" : pour chaque annotation CSQ, on crée une ligne complète
+    # Flatten the annotations by creating one complete row per CSQ annotation.
     flattened_rows = []
     for ann in annotations:
-        # On fusionne le dictionnaire de base avec le dictionnaire de l'annotation
+        # Copy the variant-level information so each row remains independent.
         new_row = base_info.copy()
+        # Add the annotation fields using the "csq_" prefix.
         new_row.update(
             {f"csq_{field_name}": value for field_name, value in ann.items()}
         )
         flattened_rows.append(new_row)
 
+    # Return all rows generated for this variant.
     return flattened_rows
-
 
 
 class DatasetWriter:
@@ -470,9 +476,9 @@ class DatasetWriter:
             buffer.extend(chrom_rows)
 
             while len(buffer) >= self.chunk_size:
-                chunk = buffer[:self.chunk_size]
+                chunk = buffer[: self.chunk_size]
                 self._write_rows(chrom, chunk)
-                del buffer[:self.chunk_size]
+                del buffer[: self.chunk_size]
 
     def flush(self):
         """Write all remaining buffered rows without closing active writers."""
@@ -502,7 +508,6 @@ class DatasetWriter:
     def get_counters(self):
         """Return the next unused part number for each chromosome."""
         return dict(self.file_counters)
-
 
 
 # =============================================================================
@@ -838,7 +843,7 @@ def build_lookup_indexes(output_dir):
 
 def build_text_summary_files(output_dir):
     """
-    Generates summary text files (Impact, Consequences, Features, Genes)
+    Generates summary text files (Impact, Consequences, Features, Genes, Chromosomes)
     based on the generated Parquet dataset.
     """
     import logging
@@ -847,16 +852,12 @@ def build_text_summary_files(output_dir):
     import duckdb
 
     logging.info(
-        "Building text summary files (Impact, Consequences, Features, Genes)..."
+        "Building text summary files (Impact, Consequences, Features, Genes, Chromosomes)..."
     )
     con = duckdb.connect()
 
     variants_root = Path(output_dir) / "variants"
 
-    # CORRECTION ICI :
-    # 1. On utilise un glob simple sur tous les fichiers .parquet
-    # 2. On retire hive_partitioning=true car 'chrom' est déjà une colonne dans vos fichiers
-    # 3. On utilise le chemin absolu pour éviter toute ambiguïté
     main_table_pattern = str(variants_root.absolute() / "chrom=*/*.parquet")
 
     try:
@@ -882,7 +883,7 @@ def build_text_summary_files(output_dir):
         logging.info("Generating consequences.txt...")
         con.execute(f"""
             COPY (
-                SELECT DISTINCT csq_Consequence 
+                SELECT DISTINCT csq_Consequence
                 FROM read_parquet('{main_table_pattern}')
                 WHERE csq_Consequence IS NOT NULL AND csq_Consequence != ''
                 ORDER BY csq_Consequence
@@ -910,6 +911,16 @@ def build_text_summary_files(output_dir):
                 GROUP BY csq_Gene
                 ORDER BY csq_Gene
             ) TO '{Path(output_dir).absolute()}/genes.tsv' (FORMAT 'CSV', DELIMITER '\t', HEADER FALSE)
+        """)
+
+        # 5. chromosomes.txt
+        logging.info("Generating chromosomes.txt...")
+        con.execute(f"""
+            COPY (
+                SELECT DISTINCT chrom
+                FROM read_parquet('{main_table_pattern}')
+                ORDER BY chrom
+            ) TO '{Path(output_dir).absolute()}/chromosomes.txt' (FORMAT 'CSV', DELIMITER '\n', HEADER FALSE)
         """)
 
         logging.info("All summary files created successfully.")
@@ -1081,9 +1092,7 @@ Notes:
 
     # --overwrite and --resume are mutually exclusive
     if args.overwrite and args.resume:
-        parser.error(
-            "--overwrite and --resume cannot be used together."
-        )
+        parser.error("--overwrite and --resume cannot be used together.")
 
     # When a chromosome is specified, always overwrite that chromosome.
     # Resume mode is not applicable to a targeted chromosome conversion.

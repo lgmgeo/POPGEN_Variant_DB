@@ -6,7 +6,6 @@ re-importing the source Parquet files. Existing indexes are skipped,
 allowing the process to resume after an interruption.
 
 Database indexes:
-  idx_chrom_pos   Chromosome and position
   idx_feature     Transcript (csq_Feature)
   idx_id          Variant identifier
   idx_symbol      Gene symbol (csq_SYMBOL)
@@ -22,14 +21,13 @@ from pathlib import Path
 
 import duckdb
 
-# Indexes created on the variants table to accelerate queries by genomic
-# coordinates, transcript, variant ID, gene symbol, and allele frequency.
+# Indexes created on the variants table to accelerate queries by:
+# transcript, variant ID, gene symbol, and allele frequency.
 # Each tuple contains:
 #   1. Index name in DuckDB.
 #   2. Column(s) indexed in the variants table.
 #   3. Human-readable description used in log messages.
 INDEXES = [
-    ("idx_chrom_pos", "chrom, pos", "Coordinates"),
     ("idx_feature", "csq_Feature", "Transcripts"),
     ("idx_id", "id", "Variant IDs"),
     ("idx_symbol", "csq_SYMBOL", "Genes"),

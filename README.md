@@ -20,10 +20,9 @@
 
 ### DuckDB Indexing (`build_indexes.py`)
 - **Automated Indexing**: Builds specialized indices for:
-  - **Coordinates** (`chrom`, `pos`)
-  - **Transcripts** (`Feature`)
+  - **Transcripts** (`csq_Feature`)
   - **Variant IDs** (`id`)
-  - **Genes** (`SYMBOL`, `AF`)
+  - **Genes** (`SYMBOL`)
 
 
 ## Installation
@@ -100,7 +99,7 @@
 2. **Build lookup indexes and text summaries for the user interface**
 
     - **Indexes:** feature_index.parquet, gene_index.parquet and id_index.parquet
-    - **Text summaries:** Impact.txt, consequences.txt, features.tsv and genes.tsv  
+    - **Text summaries:** Impact.txt, consequences.txt, chromosomes.txt, features.tsv and genes.tsv  
 
     ```bash
     python3 ./scripts/variant2parquet__snvindel.py --output data/processed/snvindel.200variants --build-indexes
@@ -113,6 +112,7 @@
     ├── Impact.txt
     ├── checkpoint.json
     ├── consequences.txt
+    ├── chromosomes.txt
     ├── feature_index.parquet
     ├── features.tsv
     ├── gene_index.parquet
@@ -184,7 +184,7 @@ required arguments:
 ## DuckDB Indexing (`build_indexes.py`)
 
 
-The `build_indexes.py` script creates indexes on an existing DuckDB database to accelerate queries on genomic coordinates, transcripts, variant IDs, gene symbols, and allele frequencies.
+The `build_indexes.py` script creates indexes on an existing DuckDB database to accelerate queries on genomic transcripts, variant IDs and gene symbols.
 
 Index creation is performed separately from database construction to allow memory usage to be controlled and indexing to be resumed if interrupted.
 
@@ -194,11 +194,9 @@ The script creates the following indexes on the `variants` table:
 
 | Index | Column(s) | Purpose |
 |---|---|---|
-| `idx_chrom_pos` | `chrom, pos` | Genomic coordinate queries |
 | `idx_feature` | `csq_Feature` | Transcript-based queries |
 | `idx_id` | `id` | Variant ID lookups |
 | `idx_symbol` | `csq_SYMBOL` | Gene symbol queries |
-| `idx_af` | `AF` | Allele frequency filtering |
 
 ### Usage
 
@@ -219,7 +217,7 @@ For example:
 python scripts/build_indexes.py \
     --db db/snvindel.200variants.db \
     --memory-limit 32GB \
-    --threads 2
+    --threads 1
 ```
 
 Adjust these values according to the available system resources and the size of the database.
