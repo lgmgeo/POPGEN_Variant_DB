@@ -83,21 +83,21 @@ python3 "$PROJECT_ROOT/scripts/variant2parquet__snvindel.py" \
 print_status "Resume command executed without error."
 
 # -----------------------------------------------------------------------------
-# STEP 3: Build Lookup Indexes
+# STEP 3: Build Lookup Files
 # -----------------------------------------------------------------------------
-echo -e "\n${BLUE}Step 3: Building lookup indexes (--build-indexes)...${NC}"
+echo -e "\n${BLUE}Step 3: Building lookup files (--build-lookup)...${NC}"
 python3 "$PROJECT_ROOT/scripts/variant2parquet__snvindel.py" \
     --output "$OUTPUT_DIR" \
-    --build-indexes \
+    --build-lookup \
     --log-level DEBUG
 
-# Verification of index files
-INDEX_FILES=("id_index.parquet" "gene_index.parquet" "feature_index.parquet")
-for file in "${INDEX_FILES[@]}"; do
+# Verification of lookup Parquet files
+LOOKUP_FILES=("id_chrom.parquet" "feature_chrom_symbol.parquet" "impact.txt" "consequences.txt" "chromosomes.txt")
+for file in "${LOOKUP_FILES[@]}"; do
     if [ -f "$OUTPUT_DIR/$file" ]; then
-        echo -e "${GREEN}[PASS]${NC} Index created: $file"
+        echo -e "${GREEN}[PASS]${NC} Lookup file created: $file"
     else
-        echo -e "${RED}[FAIL]${NC} Index missing: $file"
+        echo -e "${RED}[FAIL]${NC} Lookup file missing: $file"
         exit 1
     fi
 done

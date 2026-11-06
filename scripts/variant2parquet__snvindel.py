@@ -21,7 +21,7 @@ data/processed/<dataset_name>/
         chrom=<value>/
             part-nnnnnn.parquet (Single denormalized table)
 
-id_index.parquet, gene_index.parquet, feature_index.parquet
+id_chrom.parquet, feature_chrom_symbol.parquet
 """
 
 import argparse
@@ -606,19 +606,17 @@ def convert_vcf(
     #      partition and invalidate its checkpoint entry so it can be reprocessed.
     #    - Preserve checkpoint entries for all other chromosomes to allow
     #      --resume to skip chromosomes that have already been processed.
-    #    - Remove lookup indexes and summary files, as they may become outdated
+    #    - Remove lookup Parquet and summary files, as they may become outdated
     #      after overwriting a chromosome partition.
     #    - If no chromosome filter is specified, remove the entire output directory
-    #      and recreate it, including all partitions, indexes, summaries, and checkpoints.
+    #      and recreate it, including all partitions, Parquet, summaries, and checkpoints.
     if overwrite:
         derived_files = [
-            "id_index.parquet",
-            "gene_index.parquet",
-            "feature_index.parquet",
-            "Impact.txt",
+            "id_chrom.parquet",
+            "feature_chrom_symbol.parquet",
+            "impact.txt",
             "consequences.txt",
-            "features.tsv",
-            "genes.tsv",
+            "chromosomes.txt",
         ]
 
         if chromosome_filter:
@@ -652,7 +650,7 @@ def convert_vcf(
                         f"Cannot safely update checkpoint {checkpoint_path}"
                     ) from e
 
-            # Remove indexes and summaries that may now be outdated
+            # Remove lookup and summaries that may now be outdated
             for filename in derived_files:
                 file_path = output_path / filename
                 if file_path.exists():
@@ -774,10 +772,9 @@ def convert_vcf(
         vcf.close()
 
 
-def build_lookup_indexes(output_dir):
+def build_parquet_for_the_font_form(output_dir):
     """
-    Builds lightweight lookup Parquet files to accelerate filtering by
-    ID, Gene, or Feature.
+    Builds Parquet files dedicated to the font form (user interface)
 
     Note: Column names are prefixed with 'csq_' because of the flattening logic.
     """
@@ -787,16 +784,16 @@ def build_lookup_indexes(output_dir):
 
     output_path = Path(output_dir)
 
-    # 1. Check if data exists before starting DuckDB
+    # Check if data exists before starting DuckDB
     variants_root = output_path / "variants"
     if not variants_root.exists() or not list(variants_root.glob("chrom=*/*.parquet")):
         logging.error(
-            f"No Parquet files found in {variants_root}. Cannot build indexes."
+            f"No Parquet files found in {variants_root}. Cannot build lookup files."
         )
         return
 
     logging.info(
-        f"Building lookup indexes using pattern: {variants_root}/chrom=*/*.parquet"
+        f"Building parquet files dedicated to the font form using pattern: {variants_root}/chrom=*/*.parquet"
     )
 
     con = duckdb.connect()
@@ -804,38 +801,28 @@ def build_lookup_indexes(output_dir):
     main_table_pattern = f"'{variants_root.absolute()}/chrom=*/*.parquet'"
 
     try:
-        # Task 1: ID Index (Uses 'id' column)
-        logging.info("Creating id_index.parquet...")
+        # Task 1: Uses 'id' and 'chrom' columns
+        logging.info("Creating id_chrom.parquet...")
         con.execute(f"""
             COPY (
-                SELECT id, variant_key 
+                SELECT id, chrom
                 FROM read_parquet({main_table_pattern})
                 WHERE id IS NOT NULL AND id != ''
-            ) TO '{output_path.absolute()}/id_index.parquet' (FORMAT 'PARQUET')
+            ) TO '{output_path.absolute()}/id_chrom.parquet' (FORMAT 'PARQUET')
         """)
 
-        # Task 2: Gene Index (Uses 'csq_SYMBOL' column)
-        logging.info("Creating gene_index.parquet...")
+        # Task 2: Uses 'csq_Feature', 'chrom' and 'csq_SYMBOL' columns
+        logging.info("Creating feature_chrom_symbol.parquet...")
         con.execute(f"""
             COPY (
-                SELECT csq_SYMBOL as gene, variant_key 
-                FROM read_parquet({main_table_pattern})
-                WHERE csq_SYMBOL IS NOT NULL AND csq_SYMBOL != ''
-            ) TO '{output_path.absolute()}/gene_index.parquet' (FORMAT 'PARQUET')
-        """)
-
-        # Task 3: Feature Index (Uses 'csq_Feature' column)
-        logging.info("Creating feature_index.parquet...")
-        con.execute(f"""
-            COPY (
-                SELECT csq_Feature, variant_key 
+                SELECT csq_Feature, chrom, csq_SYMBOL
                 FROM read_parquet({main_table_pattern})
                 WHERE csq_Feature IS NOT NULL AND csq_Feature != ''
-            ) TO '{output_path.absolute()}/feature_index.parquet' (FORMAT 'PARQUET')
+            ) TO '{output_path.absolute()}/feature_chrom_symbol.parquet' (FORMAT 'PARQUET')
         """)
 
     except Exception as e:
-        logging.error(f"Error during index building: {e}")
+        logging.error(f"Error during lookup files building: {e}")
         raise
     finally:
         con.close()
@@ -843,7 +830,7 @@ def build_lookup_indexes(output_dir):
 
 def build_text_summary_files(output_dir):
     """
-    Generates summary text files (Impact, Consequences, Features, Genes, Chromosomes)
+    Generates summary text files (impact, consequences, chromosomes)
     based on the generated Parquet dataset.
     """
     import logging
@@ -852,7 +839,7 @@ def build_text_summary_files(output_dir):
     import duckdb
 
     logging.info(
-        "Building text summary files (Impact, Consequences, Features, Genes, Chromosomes)..."
+        "Building text summary files dedicated to the font form (impact.txt, consequences.txt, chromosomes.txt)"
     )
     con = duckdb.connect()
 
@@ -861,22 +848,22 @@ def build_text_summary_files(output_dir):
     main_table_pattern = str(variants_root.absolute() / "chrom=*/*.parquet")
 
     try:
-        # On vérifie d'abord si on trouve des fichiers pour éviter un crash DuckDB
+        # Check if data exists before starting DuckDB
         if not list(variants_root.glob("chrom=*/*.parquet")):
             logging.error(
                 f"No parquet files found in {variants_root}. Cannot build summary files."
             )
             return
 
-        # 1. Impact.txt
-        logging.info("Generating Impact.txt...")
+        # 1. impact.txt
+        logging.info("Generating impact.txt...")
         con.execute(f"""
             COPY (
                 SELECT DISTINCT csq_IMPACT 
                 FROM read_parquet('{main_table_pattern}')
                 WHERE csq_IMPACT IS NOT NULL AND csq_IMPACT != ''
                 ORDER BY csq_IMPACT
-            ) TO '{Path(output_dir).absolute()}/Impact.txt' (FORMAT 'CSV', DELIMITER '\n', HEADER FALSE)
+            ) TO '{Path(output_dir).absolute()}/impact.txt' (FORMAT 'CSV', DELIMITER '\n', HEADER FALSE)
         """)
 
         # 2. consequences.txt
@@ -890,30 +877,7 @@ def build_text_summary_files(output_dir):
             ) TO '{Path(output_dir).absolute()}/consequences.txt' (FORMAT 'CSV', DELIMITER '\n', HEADER FALSE)
         """)
 
-        # 3. features.tsv
-        logging.info("Generating features.tsv...")
-        con.execute(f"""
-            COPY (
-                SELECT DISTINCT csq_Feature, chrom, csq_Gene
-                FROM read_parquet('{main_table_pattern}')
-                WHERE csq_Feature IS NOT NULL AND csq_Feature != ''
-                ORDER BY csq_Feature
-            ) TO '{Path(output_dir).absolute()}/features.tsv' (FORMAT 'CSV', DELIMITER '\t', HEADER FALSE)
-        """)
-
-        # 4. genes.tsv
-        logging.info("Generating genes.tsv...")
-        con.execute(f"""
-            COPY (
-                SELECT csq_Gene, list_aggregate(array_agg(DISTINCT chrom), 'string_agg', ',') as chroms
-                FROM read_parquet('{main_table_pattern}')
-                WHERE csq_Gene IS NOT NULL AND csq_Gene != ''
-                GROUP BY csq_Gene
-                ORDER BY csq_Gene
-            ) TO '{Path(output_dir).absolute()}/genes.tsv' (FORMAT 'CSV', DELIMITER '\t', HEADER FALSE)
-        """)
-
-        # 5. chromosomes.txt
+        # 3. chromosomes.txt
         logging.info("Generating chromosomes.txt...")
         con.execute(f"""
             COPY (
@@ -939,7 +903,7 @@ def main():
         description=(
             "Convert an annotated VCF/BCF file into a partitioned Parquet "
             "dataset, with one row per VEP annotation. "
-            "Alternatively, build lookup indexes and text summaries "
+            "Alternatively, build lookup Parquet and text summaries files"
             "from an existing dataset."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -960,8 +924,8 @@ Examples:
      python3 %(prog)s --input tests/synthetic_catalogue_snvindel.200variants.vcf.gz --output data/processed/snvindel.200variants \\
               --overwrite
 
-  5. Build lookup indexes and text summaries:
-     python3 %(prog)s --output data/processed/snvindel.200variants --build-indexes
+  5. Build lookup Parquet and text summaries:
+     python3 %(prog)s --output data/processed/snvindel.200variants --build-lookup
 
   6. Customize processing parameters:
      python3 %(prog)s --input tests/synthetic_catalogue_snvindel.200variants.vcf.gz --output data/processed/snvindel.200variants \\
@@ -974,15 +938,18 @@ Input formats:
 
 Output structure:
   OUTPUT/
-  ├── variants/
-  │   ├── chrom=chr1/
-  │   │   └── part-000000.parquet
-  │   └── chrom=chr2/
-  │       └── part-000000.parquet
-  ├── checkpoint.json
-  ├── id_index.parquet
-  ├── gene_index.parquet
-  └── feature_index.parquet
+    ├── impact.txt
+    ├── checkpoint.json
+    ├── consequences.txt
+    ├── chromosomes.txt
+    ├── feature_chrom_symbol.parquet
+    ├── id_chrom.parquet
+    └── variants
+        ├── chrom=chr1
+        │   └── part-000000.parquet
+        │── chrom=chr2
+        │   └── part-000000.parquet
+        └── ...
 
 Notes:
   - Each output row represents one VEP annotation.
@@ -991,7 +958,7 @@ Notes:
   - --chromosome and --resume cannot be used together.
   - --overwrite and --resume cannot be used together.
   - Without --chromosome, --overwrite replaces the entire output directory.
-  - --build-indexes does not require --input.
+  - --build-lookup does not require --input.
 """,
     )
 
@@ -1010,7 +977,7 @@ Notes:
         type=Path,
         required=True,
         metavar="DIR",
-        help="Output directory for the Parquet dataset, indexes, and summaries.",
+        help="Output directory for the Parquet dataset and lookup files.",
     )
 
     # Processing options
@@ -1035,9 +1002,12 @@ Notes:
         ),
     )
     processing_group.add_argument(
-        "--build-indexes",
+        "--build-lookup",
         action="store_true",
-        help="Build lookup indexes and text summaries from existing Parquet files.",
+        help=(
+            "Generate lookup Parquet and text files used by the web interface "
+            "to populate user-facing search forms with available values."
+        ),
     )
 
     # Performance options
@@ -1100,15 +1070,15 @@ Notes:
         args.overwrite = True
         args.resume = False
 
-    if args.build_indexes:
-        # If building indexes, we don't need the input file argument
-        build_lookup_indexes(args.output)
+    if args.build_lookup:
+        # If building lookup files, we don't need the input file argument
+        build_parquet_for_the_font_form(args.output)
         build_text_summary_files(args.output)
     else:
-        # If NOT building indexes, we ARE in parquet conversion mode, so --input is mandatory
+        # If NOT building lookup files, we ARE in parquet conversion mode, so --input is mandatory
         if args.input is None:
             parser.error(
-                "the following arguments are required: --input/-i (required when not using --build-indexes)"
+                "the following arguments are required: --input/-i (required when not using --build-lookup)"
             )
 
         convert_vcf(

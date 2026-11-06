@@ -61,7 +61,7 @@
                             Process only the specified chromosome, reprocessing it from scratch.
     --resume              Resume conversion using checkpoint.json and skip completed chromosomes.
     --overwrite           Overwrite existing output. Replaces the entire output directory, unless --chromosome is specified.
-    --build-indexes       Build lookup indexes and text summaries from existing Parquet files.
+    --build-lookup        Generate lookup Parquet and text files used by the web interface to populate user-facing search forms with available values.
 
     performance options:
     --chunk-size N        Number of rows buffered per chromosome before writing a batch.
@@ -95,29 +95,25 @@
     ```bash
     python3 ./scripts/variant2parquet__snvindel.py --input tests/synthetic_catalogue_snvindel.200variants.vcf.gz --output data/processed/snvindel.200variants --overwrite
      ```
+2. **Build lookup Parquet and text summaries files used by the web interface**
 
-2. **Build lookup indexes and text summaries for the user interface**
-
-    - **Indexes:** feature_index.parquet, gene_index.parquet and id_index.parquet
-    - **Text summaries:** Impact.txt, consequences.txt, chromosomes.txt, features.tsv and genes.tsv  
+    - **Parquet:** feature_chrom_symbol.parquet and id_chrom.parquet
+    - **Text summaries:** impact.txt, consequences.txt and chromosomes.txt  
 
     ```bash
-    python3 ./scripts/variant2parquet__snvindel.py --output data/processed/snvindel.200variants --build-indexes
+    python3 ./scripts/variant2parquet__snvindel.py --output data/processed/snvindel.200variants --build-lookup
     ```
 
 2. **Output structure**
 
     ```bash
     data/processed/snvindel.200variants/
-    ├── Impact.txt
     ├── checkpoint.json
-    ├── consequences.txt
     ├── chromosomes.txt
-    ├── feature_index.parquet
-    ├── features.tsv
-    ├── gene_index.parquet
-    ├── genes.tsv
-    ├── id_index.parquet
+    ├── consequences.txt
+    ├── feature_chrom_symbol.parquet
+    ├── id_chrom.parquet
+    ├── impact.txt
     └── variants
         ├── chrom=chr1
         │   └── part-000000.parquet
