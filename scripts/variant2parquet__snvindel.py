@@ -772,9 +772,9 @@ def convert_vcf(
         vcf.close()
 
 
-def build_parquet_for_the_font_form(output_dir):
+def build_parquet_for_the_front_form(output_dir):
     """
-    Builds Parquet files dedicated to the font form (user interface)
+    Builds Parquet files dedicated to the front form (user interface)
 
     Note: Column names are prefixed with 'csq_' because of the flattening logic.
     """
@@ -793,7 +793,7 @@ def build_parquet_for_the_font_form(output_dir):
         return
 
     logging.info(
-        f"Building parquet files dedicated to the font form using pattern: {variants_root}/chrom=*/*.parquet"
+        f"Building parquet files dedicated to the front form using pattern: {variants_root}/chrom=*/*.parquet"
     )
 
     con = duckdb.connect()
@@ -839,7 +839,7 @@ def build_text_summary_files(output_dir):
     import duckdb
 
     logging.info(
-        "Building text summary files dedicated to the font form (impact.txt, consequences.txt, chromosomes.txt)"
+        "Building text summary files dedicated to the front form (impact.txt, consequences.txt, chromosomes.txt)"
     )
     con = duckdb.connect()
 
@@ -1072,7 +1072,7 @@ Notes:
 
     if args.build_lookup:
         # If building lookup files, we don't need the input file argument
-        build_parquet_for_the_font_form(args.output)
+        build_parquet_for_the_front_form(args.output)
         build_text_summary_files(args.output)
     else:
         # If NOT building lookup files, we ARE in parquet conversion mode, so --input is mandatory

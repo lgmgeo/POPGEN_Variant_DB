@@ -21,9 +21,12 @@ def get_connection():
 async def lifespan(app: FastAPI):
     """Validate database availability and required columns at startup."""
     try:
+        # Open a temporary database connection and ensure it is closed afterward.
         with closing(get_connection()) as con:
+            # Retrieve the column names from the variants table.
             columns = {row[0] for row in con.execute("DESCRIBE variants").fetchall()}
 
+            # Define the columns required by the API endpoints.
             required = {
                 "chrom",
                 "pos",
@@ -42,12 +45,14 @@ async def lifespan(app: FastAPI):
                 "passGnomad",
             }
 
+            # Check whether any required columns are missing from the database.
             missing = required - columns
             if missing:
                 raise RuntimeError(
                     f"Missing columns in variants table: {sorted(missing)}"
                 )
 
+            # Execute a simple query to verify that the database is operational.
             con.execute("SELECT 1").fetchone()
 
     except Exception as exc:
@@ -55,14 +60,16 @@ async def lifespan(app: FastAPI):
             f"Cannot initialize API using database {DB_PATH}: {exc}"
         ) from exc
 
+    # Allow the application to start once all checks have passed.
     yield
 
 
+# Initialize the FastAPI application.
 app = FastAPI(
-    title="POPGEN Variant API",
+    title="POPGEN Variant API",  # API name displayed in the automatic documentation.
     description="Read-only API for querying annotated genetic variants.",
-    version="0.1.0",
-    lifespan=lifespan,
+    version="0.1.0",  # Current API version.
+    lifespan=lifespan,  # Run database validation during application startup.
 )
 
 
@@ -70,6 +77,7 @@ app = FastAPI(
 def health():
     """Check API and database availability."""
     try:
+        # Open a database connection and verify that it can execute a query.
         with closing(get_connection()) as con:
             con.execute("SELECT 1").fetchone()
 
@@ -90,7 +98,7 @@ def search_variants(
     pos: int | None = Query(default=None, ge=1),
     start: int | None = Query(default=None, ge=1),
     end: int | None = Query(default=None, ge=1),
-    # Transcript annotations
+    # Transcript and gene annotations
     gene: str | None = Query(default=None, min_length=1, max_length=100),
     feature: str | None = Query(default=None, min_length=1, max_length=100),
     consequence: list[str] | None = Query(default=None),
@@ -107,7 +115,7 @@ def search_variants(
     an_max: int | None = Query(default=None, ge=0),
     af_min: float | None = Query(default=None, ge=0, le=1),
     af_max: float | None = Query(default=None, ge=0, le=1),
-    # Pagination
+    # Pagination parameters
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ):
@@ -130,6 +138,7 @@ def search_variants(
                 detail=f"The minimum {name} must be less than or equal to its maximum",
             )
 
+    # Initialize the SQL conditions and their corresponding parameter values.
     conditions = []
     params = []
 
@@ -154,7 +163,7 @@ def search_variants(
         conditions.append("pos <= ?")
         params.append(end)
 
-    # Transcript annotations
+    # Gene / transcript annotations
     if gene is not None:
         conditions.append("csq_SYMBOL = ?")
         params.append(gene)
@@ -224,8 +233,9 @@ def search_variants(
         conditions.append('"AF" <= ?')
         params.append(af_max)
 
-    # DISTINCT removes duplicate transcript rows because the selected
-    # variant-level fields are identical for all transcripts of a variant.
+    # Build the SQL query.
+    # "DISTINCT" removes duplicate transcript rows, because the selected
+    # variant-level fields are identical across transcripts of the same variant.
     sql = """
         SELECT DISTINCT
             chrom,
@@ -239,6 +249,8 @@ def search_variants(
         FROM variants
     """
 
+    # Add the WHERE clause only if at least one filter was provided.
+    # All conditions are combined using AND logic.
     if conditions:
         sql += " WHERE " + " AND ".join(conditions)
 
