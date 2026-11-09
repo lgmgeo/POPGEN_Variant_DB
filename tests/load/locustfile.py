@@ -15,7 +15,7 @@ class POPGENUser(HttpUser):
         """Recherche un identifiant de variant."""
         self.client.get(
             "/variants",
-            params={"id": "2p2vh0ZkpqYo", "limit": 10},
+            params={"id": "2p2vh0ZkpqYo"},
             name="/variants?id",
         )
 
@@ -28,6 +28,7 @@ class POPGENUser(HttpUser):
                 "chrom": "chr21",
                 "start": 5000000,
                 "end": 8000000,
+                "limit": 1000,
             },
             name="/variants?bigregion",
         )
@@ -39,6 +40,7 @@ class POPGENUser(HttpUser):
             "/variants",
             params={
                 "gene": "ABCC13",
+                "limit": 1000,
             },
             name="/variants?gene",
         )

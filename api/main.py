@@ -116,7 +116,7 @@ def search_variants(
     af_min: float | None = Query(default=None, ge=0, le=1),
     af_max: float | None = Query(default=None, ge=0, le=1),
     # Pagination parameters
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int | None = Query(None, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ):
     """Search unique variants using optional coordinate and annotation filters."""
@@ -255,11 +255,14 @@ def search_variants(
         sql += " WHERE " + " AND ".join(conditions)
 
     # Pagination is applied after DISTINCT, so it operates on unique variants.
-    sql += """
-        ORDER BY chrom, pos, ref, alt, id
-        LIMIT ? OFFSET ?
-    """
-    params.extend([limit, offset])
+    sql += " ORDER BY chrom, pos, ref, alt, id"
+
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(limit)
+
+    sql += " OFFSET ?"
+    params.append(offset)
 
     try:
         with closing(get_connection()) as con:
