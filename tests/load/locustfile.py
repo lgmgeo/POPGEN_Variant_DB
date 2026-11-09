@@ -10,7 +10,7 @@ class POPGENUser(HttpUser):
         """Vérifie la disponibilité de l'API."""
         self.client.get("/health", name="/health")
 
-    @task(3)
+    @task(10)
     def search_by_id(self):
         """Recherche un identifiant de variant."""
         self.client.get(
@@ -19,7 +19,7 @@ class POPGENUser(HttpUser):
             name="/variants?id",
         )
 
-    @task(3)
+    @task(10)
     def search_by_region(self):
         """Recherche dans une grande région du chromosome 21."""
         self.client.get(
@@ -32,7 +32,7 @@ class POPGENUser(HttpUser):
             name="/variants?bigregion",
         )
 
-    @task(2)
+    @task(10)
     def search_by_symbol(self):
         """Recherche par symbole de gène."""
         self.client.get(
@@ -42,3 +42,8 @@ class POPGENUser(HttpUser):
             },
             name="/variants?gene",
         )
+
+    @task(1)
+    def database_info(self):
+        """Retrieve the name of the database used by the API."""
+        self.client.get("/database", name="/database")

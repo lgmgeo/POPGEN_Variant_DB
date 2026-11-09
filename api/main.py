@@ -279,3 +279,9 @@ def search_variants(
             status_code=500,
             detail="Database query failed",
         )
+
+
+@app.get("/database")
+def get_database_name():
+    """Return the name of the DuckDB database file."""
+    return {"database": Path(DB_PATH).name}
