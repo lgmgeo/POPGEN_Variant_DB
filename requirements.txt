@@ -14,4 +14,4 @@ fastapi
 uvicorn[standard]
 
 # HTTP client for FastAPI tests
-httpx
+httpx2

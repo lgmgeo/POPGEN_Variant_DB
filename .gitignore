@@ -1,12 +1,10 @@
-.ruff_cache
-.vscode
-
-# Excluded project folders
-David_Salgado/
-DuckDB/
-old_scripts/
+# IDE and tool caches
+.pytest_cache/
+.ruff_cache/
+.vscode/
 
 # Excluded documentation drafts
+docs/
 README_*
 
 # Python
@@ -17,15 +15,17 @@ __pycache__/
 venv/
 ENV/
 
-# Data & DB 
-data/
-db/
+# Data & DB
 *.db
 *.parquet
+*.vcf
 *.vcf.gz
 *.bcf
 *.tbi
 *.csi
+
+# Temporary files
+data/datasets/*/tmp/*
 
 # Logs
 *.log
@@ -33,7 +33,11 @@ db/
 # OS
 .DS_Store
 
-# Allow synthetic test data
-!tests/synthetic_catalogue_snvindel.200variants.vcf.gz
-!tests/synthetic_catalogue_snvindel.200variants.vcf.gz.csi
-
+# Dataset files (except synthetic VCF test input)
+data/datasets/*
+!data/datasets/snvindel.200variants/
+data/datasets/snvindel.200variants/*
+!data/datasets/snvindel.200variants/raw/
+data/datasets/snvindel.200variants/raw/*
+!data/datasets/snvindel.200variants/raw/synthetic_catalogue_snvindel.200variants.vcf.gz
+!data/datasets/snvindel.200variants/raw/synthetic_catalogue_snvindel.200variants.vcf.gz.csi

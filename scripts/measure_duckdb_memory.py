@@ -1,19 +1,14 @@
-
 #!/usr/bin/env python3
+
 """Measure process memory and query execution times for a DuckDB database."""
 
+import argparse
 import os
 import time
+from pathlib import Path
 
 import duckdb
 import psutil
-
-
-DB_PATH = (
-    "/home/ubuntu/POPGEN_Variant_DB/"
-    "Vero_1table/POPGEN_Variant_DB/"
-    "db/example_catalogue_SNV.db"
-)
 
 # Get the current Python process to monitor its resident memory usage.
 process = psutil.Process(os.getpid())
@@ -21,16 +16,36 @@ process = psutil.Process(os.getpid())
 
 def report_memory(label):
     """Print the current process RSS (Resident Set Size) in MiB."""
-    rss_mb = process.memory_info().rss / (1024 ** 2)
+    rss_mb = process.memory_info().rss / (1024**2)
     print(f"{label:<40} RAM: {rss_mb:,.1f} MiB")
 
 
 def main():
+
+    parser = argparse.ArgumentParser(
+        description="Measure process memory and query execution times for a DuckDB database."
+    )
+    parser.add_argument(
+        "--dataset",
+        type=Path,
+        required=True,
+        metavar="DIR",
+        help="Dataset directory containing the duckdb/ subdirectory.",
+    )
+    args = parser.parse_args()
+
+    dataset_dir = args.dataset
+    dataset_name = dataset_dir.name
+    db_path = dataset_dir / "duckdb" / f"{dataset_name}.db"
+
+    if not db_path.is_file():
+        parser.error(f"DuckDB database not found: {db_path}")
+
     # 1. Measure memory before opening the database.
     report_memory("Before opening the database")
 
     # 2. Open the database in read-only mode.
-    con = duckdb.connect(DB_PATH, read_only=True)
+    con = duckdb.connect(str(db_path), read_only=True)
     report_memory("After opening the database")
 
     # 3. Define representative queries to execute sequentially.
@@ -107,4 +122,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

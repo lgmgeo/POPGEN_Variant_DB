@@ -21,16 +21,16 @@ class POPGENUser(HttpUser):
 
     @task(10)
     def search_by_region(self):
-        """Recherche dans une grande région du chromosome 21."""
+        """Recherche dans une région du chromosome 1."""
         self.client.get(
             "/variants",
             params={
-                "chrom": "chr21",
-                "start": 5000000,
-                "end": 8000000,
+                "chrom": "chr1",
+                "start": 1,
+                "end": 100000,
                 "limit": 1000,
             },
-            name="/variants?bigregion",
+            name="/variants?region",
         )
 
     @task(10)
@@ -39,7 +39,7 @@ class POPGENUser(HttpUser):
         self.client.get(
             "/variants",
             params={
-                "gene": "ABCC13",
+                "gene": "DDX11L16",
                 "limit": 1000,
             },
             name="/variants?gene",

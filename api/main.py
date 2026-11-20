@@ -6,7 +6,12 @@ import duckdb
 from fastapi import FastAPI, HTTPException, Query
 
 # Database path can be overridden with the POPGEN_DB environment variable.
-DB_PATH = Path(os.environ.get("POPGEN_DB", "db/snvindel.200variants.db")).resolve()
+DB_PATH = Path(
+    os.environ.get(
+        "POPGEN_DB",
+        "data/datasets/snvindel.200variants/duckdb/snvindel.200variants.db",
+    )
+).resolve()
 
 
 def get_connection():
@@ -116,7 +121,7 @@ def search_variants(
     af_min: float | None = Query(default=None, ge=0, le=1),
     af_max: float | None = Query(default=None, ge=0, le=1),
     # Pagination parameters
-    limit: int | None = Query(None, ge=1, le=500),
+    limit: int | None = Query(None, ge=1, le=100000),
     offset: int = Query(default=0, ge=0),
 ):
     """Search unique variants using optional coordinate and annotation filters."""

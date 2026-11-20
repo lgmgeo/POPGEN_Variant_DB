@@ -6,7 +6,6 @@ from fastapi.testclient import TestClient
 
 import api.main as api
 
-
 # =============================================================================
 # Configuration
 # =============================================================================
@@ -17,16 +16,20 @@ import api.main as api
 # parents[1] moves two directory levels up:
 #   tests/test_api.py -> tests -> project root
 #
-# The database is expected to be located in the project's db/ directory.
+# The database is expected to be located in the project's data/duckdb/ directory.
 #
 # This database contains a small synthetic dataset (200 variants) specifically
 # designed to test the API without requiring the full production database.
-DB_PATH = Path(__file__).resolve().parents[1] / "db/snvindel.200variants.db"
-
+# The database is expected to be located in the dataset's duckdb/ directory.
+DB_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "data/datasets/snvindel.200variants/duckdb/snvindel.200variants.db"
+)
 
 # =============================================================================
 # Pytest fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def client(monkeypatch):
@@ -77,6 +80,7 @@ def client(monkeypatch):
 # Database helper functions
 # =============================================================================
 
+
 def get_db_value(query, params=()):
     """
     Execute a read-only SQL query against the synthetic DuckDB database.
@@ -106,7 +110,6 @@ def get_db_value(query, params=()):
 
     # Open a temporary read-only connection to DuckDB.
     with duckdb.connect(str(DB_PATH), read_only=True) as con:
-
         # Execute the SQL query and retrieve the first matching row.
         row = con.execute(query, params).fetchone()
 
@@ -117,6 +120,7 @@ def get_db_value(query, params=()):
 # =============================================================================
 # Health endpoint tests
 # =============================================================================
+
 
 def test_health(client):
     """
@@ -147,6 +151,7 @@ def test_health(client):
 # =============================================================================
 # Variant endpoint tests
 # =============================================================================
+
 
 def test_variants_return_expected_columns(client):
     """
@@ -249,6 +254,7 @@ def test_variants_are_deduplicated(client):
 # Coordinate filtering tests
 # =============================================================================
 
+
 def test_filter_by_coordinates(client):
     """
     Test filtering variants using chromosome and genomic coordinates.
@@ -305,6 +311,7 @@ def test_filter_by_coordinates(client):
 # Variant ID filtering tests
 # =============================================================================
 
+
 def test_filter_by_id(client):
     """
     Test filtering variants using their variant identifier.
@@ -348,18 +355,16 @@ def test_filter_by_id(client):
 # Annotation filtering tests
 # =============================================================================
 
+
 @pytest.mark.parametrize(
     ("column", "parameter"),
     [
         # Filter variants using the VEP gene symbol annotation.
         ("csq_SYMBOL", "gene"),
-
         # Filter variants using the VEP transcript or feature annotation.
         ("csq_Feature", "feature"),
-
         # Filter variants using the VEP consequence annotation.
         ("csq_Consequence", "consequence"),
-
         # Filter variants using the VCF FILTER field.
         ('"filter"', "filter"),
     ],
@@ -433,15 +438,14 @@ def test_annotation_filters(client, column, parameter):
 # gnomAD boolean filtering tests
 # =============================================================================
 
+
 @pytest.mark.parametrize(
     "parameter",
     [
         # Select variants not covered by gnomAD.
         "notCoveredByGnomad",
-
         # Select variants present in gnomAD.
         "inGnomad",
-
         # Select variants passing the gnomAD-related filtering criteria.
         "passGnomad",
     ],
@@ -464,7 +468,6 @@ def test_gnomad_boolean_filters(client, parameter):
 
     # Test both possible values for the selected boolean parameter.
     for value in ("true", "false"):
-
         # Send the request with the current boolean value.
         response = client.get(
             "/variants",
@@ -484,6 +487,7 @@ def test_gnomad_boolean_filters(client, parameter):
 # =============================================================================
 # Allele count and frequency filtering tests
 # =============================================================================
+
 
 def test_filter_by_ac_an_af(client):
     """
@@ -528,6 +532,7 @@ def test_filter_by_ac_an_af(client):
 # =============================================================================
 # Pagination tests
 # =============================================================================
+
 
 def test_pagination(client):
     """
@@ -596,6 +601,7 @@ def test_pagination(client):
 # Empty result tests
 # =============================================================================
 
+
 def test_no_matching_variant(client):
     """
     Test the API behavior when a filter does not match any variant.
@@ -631,6 +637,7 @@ def test_no_matching_variant(client):
 # =============================================================================
 # Input validation tests
 # =============================================================================
+
 
 def test_invalid_coordinate_range(client):
     """

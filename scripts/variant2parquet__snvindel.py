@@ -12,16 +12,26 @@ Key Features:
 - Partitioning: Hive-style partitioning by chromosome.
 - Robust Typing: Maps VCF INFO (Flag, Integer, Float, String) to strict Arrow types.
 - Optimized Storage: Uses ZSTD compression and Dictionary encoding for high compression.
-- Fast Indexing: Built-in DuckDB-based indexing for ID, Gene, and Feature searches.
+- Lookup Generation: Builds Parquet and text lookup files for the web interface.
 
 Main outputs:
 -------------
-data/processed/<dataset_name>/
-    variants/
-        chrom=<value>/
-            part-nnnnnn.parquet (Single denormalized table)
-
-id_chrom.parquet, feature_chrom_symbol.parquet
+data/datasets/<dataset_name>/
+    duckdb/
+    logs/
+    parquet/
+        variants/
+            chrom=<value>/
+                part-nnnnnn.parquet
+        checkpoint.json
+    lookup_files/
+        id_chrom.parquet
+        feature_chrom_symbol.parquet
+        impact.txt
+        consequences.txt
+        chromosomes.txt
+    raw/
+    tmp/
 """
 
 import argparse
@@ -587,6 +597,14 @@ def _save_checkpoint(output_dir, progress_dict):
 # =============================================================================
 
 
+def get_lookup_output_dir(output_dir, lookup_output_dir=None):
+    """Return the dataset-specific lookup directory, using the standard data layout by default."""
+    # Keep lookup files separate from the main Parquet dataset while sharing its dataset name.
+    if lookup_output_dir is not None:
+        return Path(lookup_output_dir)
+    return Path(output_dir).parent / "lookup_files"
+
+
 def convert_vcf(
     input_file,
     output_dir,
@@ -596,9 +614,11 @@ def convert_vcf(
     chromosome_filter=None,
     resume=False,
     overwrite=False,
+    lookup_output_dir=None,
 ):
     input_path = Path(input_file)
     output_path = Path(output_dir)
+    lookup_path = get_lookup_output_dir(output_path, lookup_output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     # 1. Handle Overwrite logic
@@ -652,9 +672,9 @@ def convert_vcf(
 
             # Remove lookup and summaries that may now be outdated
             for filename in derived_files:
-                file_path = output_path / filename
+                file_path = lookup_path / filename
                 if file_path.exists():
-                    logging.info("Removing outdated file: %s", file_path)
+                    logging.info("Removing outdated lookup file: %s", file_path)
                     file_path.unlink()
 
         else:
@@ -666,6 +686,13 @@ def convert_vcf(
             if output_path.exists():
                 shutil.rmtree(output_path)
             output_path.mkdir(parents=True, exist_ok=True)
+
+            # Remove dataset-specific lookup files because the source dataset is being rebuilt.
+            for filename in derived_files:
+                file_path = lookup_path / filename
+                if file_path.exists():
+                    logging.info("Removing outdated lookup file: %s", file_path)
+                    file_path.unlink()
 
     # 2. Load Checkpoint
     checkpoint_data = {}
@@ -772,7 +799,7 @@ def convert_vcf(
         vcf.close()
 
 
-def build_parquet_for_the_front_form(output_dir):
+def build_parquet_for_the_front_form(parquet_dir, lookup_dir):
     """
     Builds Parquet files dedicated to the front form (user interface)
 
@@ -782,10 +809,13 @@ def build_parquet_for_the_front_form(output_dir):
 
     import duckdb
 
-    output_path = Path(output_dir)
+    parquet_path = Path(parquet_dir)
+    lookup_path = Path(lookup_dir)
+    # Create the dedicated lookup directory before DuckDB writes its output files.
+    lookup_path.mkdir(parents=True, exist_ok=True)
 
     # Check if data exists before starting DuckDB
-    variants_root = output_path / "variants"
+    variants_root = parquet_path / "variants"
     if not variants_root.exists() or not list(variants_root.glob("chrom=*/*.parquet")):
         logging.error(
             f"No Parquet files found in {variants_root}. Cannot build lookup files."
@@ -808,7 +838,7 @@ def build_parquet_for_the_front_form(output_dir):
                 SELECT id, chrom
                 FROM read_parquet({main_table_pattern})
                 WHERE id IS NOT NULL AND id != ''
-            ) TO '{output_path.absolute()}/id_chrom.parquet' (FORMAT 'PARQUET')
+            ) TO '{lookup_path.absolute()}/id_chrom.parquet' (FORMAT 'PARQUET')
         """)
 
         # Task 2: Uses 'csq_Feature', 'chrom' and 'csq_SYMBOL' columns
@@ -818,7 +848,7 @@ def build_parquet_for_the_front_form(output_dir):
                 SELECT csq_Feature, chrom, csq_SYMBOL
                 FROM read_parquet({main_table_pattern})
                 WHERE csq_Feature IS NOT NULL AND csq_Feature != ''
-            ) TO '{output_path.absolute()}/feature_chrom_symbol.parquet' (FORMAT 'PARQUET')
+            ) TO '{lookup_path.absolute()}/feature_chrom_symbol.parquet' (FORMAT 'PARQUET')
         """)
 
     except Exception as e:
@@ -828,7 +858,7 @@ def build_parquet_for_the_front_form(output_dir):
         con.close()
 
 
-def build_text_summary_files(output_dir):
+def build_text_summary_files(parquet_dir, lookup_dir):
     """
     Generates summary text files (impact, consequences, chromosomes)
     based on the generated Parquet dataset.
@@ -841,9 +871,12 @@ def build_text_summary_files(output_dir):
     logging.info(
         "Building text summary files dedicated to the front form (impact.txt, consequences.txt, chromosomes.txt)"
     )
+    # Create the dedicated lookup directory before DuckDB writes its output files.
+    lookup_path = Path(lookup_dir)
+    lookup_path.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
 
-    variants_root = Path(output_dir) / "variants"
+    variants_root = Path(parquet_dir) / "variants"
 
     main_table_pattern = str(variants_root.absolute() / "chrom=*/*.parquet")
 
@@ -863,7 +896,7 @@ def build_text_summary_files(output_dir):
                 FROM read_parquet('{main_table_pattern}')
                 WHERE csq_IMPACT IS NOT NULL AND csq_IMPACT != ''
                 ORDER BY csq_IMPACT
-            ) TO '{Path(output_dir).absolute()}/impact.txt' (FORMAT 'CSV', DELIMITER '\n', HEADER FALSE)
+            ) TO '{lookup_path.absolute()}/impact.txt' (FORMAT 'CSV', DELIMITER '\n', HEADER FALSE)
         """)
 
         # 2. consequences.txt
@@ -874,7 +907,7 @@ def build_text_summary_files(output_dir):
                 FROM read_parquet('{main_table_pattern}')
                 WHERE csq_Consequence IS NOT NULL AND csq_Consequence != ''
                 ORDER BY csq_Consequence
-            ) TO '{Path(output_dir).absolute()}/consequences.txt' (FORMAT 'CSV', DELIMITER '\n', HEADER FALSE)
+            ) TO '{lookup_path.absolute()}/consequences.txt' (FORMAT 'CSV', DELIMITER '\n', HEADER FALSE)
         """)
 
         # 3. chromosomes.txt
@@ -884,7 +917,7 @@ def build_text_summary_files(output_dir):
                 SELECT DISTINCT chrom
                 FROM read_parquet('{main_table_pattern}')
                 ORDER BY chrom
-            ) TO '{Path(output_dir).absolute()}/chromosomes.txt' (FORMAT 'CSV', DELIMITER '\n', HEADER FALSE)
+            ) TO '{lookup_path.absolute()}/chromosomes.txt' (FORMAT 'CSV', DELIMITER '\n', HEADER FALSE)
         """)
 
         logging.info("All summary files created successfully.")
@@ -896,6 +929,47 @@ def build_text_summary_files(output_dir):
         con.close()
 
 
+def setup_logging(log_level, output_dir):
+    """
+    Configure logging to write to both a dated log file and the console.
+
+    The log file is stored in:
+        <dataset_dir>/logs/<script_name>_YYYYMMDD.log
+
+    Existing log files with the same name are overwritten.
+    """
+    import sys
+    from datetime import datetime
+
+    output_path = Path(output_dir)
+    dataset_dir = output_path.parent
+    log_dir = dataset_dir / "logs"
+
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        script_name = Path(__file__).stem
+        date_str = datetime.now().strftime("%Y%m%d")
+        log_file = log_dir / f"{script_name}_{date_str}.log"
+
+        logging.basicConfig(
+            level=log_level,
+            format="%(asctime)s %(levelname)s %(message)s",
+            handlers=[
+                logging.FileHandler(log_file, mode="w", encoding="utf-8"),
+                logging.StreamHandler(sys.stdout),
+            ],
+            force=True,
+        )
+
+    except OSError as exc:
+        raise SystemExit(
+            f"ERROR: Cannot create or write to log directory '{log_dir}': {exc}"
+        )
+
+    logging.info("Log file: %s", log_file)
+
+
 def main():
 
     parser = argparse.ArgumentParser(
@@ -903,53 +977,62 @@ def main():
         description=(
             "Convert an annotated VCF/BCF file into a partitioned Parquet "
             "dataset, with one row per VEP annotation. "
-            "Alternatively, build lookup Parquet and text summaries files"
+            "Alternatively, build lookup Parquet and text summaries files "
             "from an existing dataset."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Examples:
   1. Convert an entire VCF/BCF file:
-     python3 %(prog)s --input tests/synthetic_catalogue_snvindel.200variants.vcf.gz --output data/processed/snvindel.200variants
+     python3 %(prog)s --input data/datasets/snvindel.200variants/raw/synthetic_catalogue_snvindel.200variants.vcf.gz --dataset data/datasets/snvindel.200variants
 
   2. Convert a single chromosome from scratch:
-     python3 %(prog)s --input tests/synthetic_catalogue_snvindel.200variants.vcf.gz --output data/processed/snvindel.200variants \\
+     python3 %(prog)s --input data/datasets/snvindel.200variants/raw/synthetic_catalogue_snvindel.200variants.vcf.gz --dataset data/datasets/snvindel.200variants \\
               --chromosome chr1
 
   3. Resume an interrupted conversion:
-     python3 %(prog)s --input tests/synthetic_catalogue_snvindel.200variants.vcf.gz --output data/processed/snvindel.200variants \\
+     python3 %(prog)s --input data/datasets/snvindel.200variants/raw/synthetic_catalogue_snvindel.200variants.vcf.gz --dataset data/datasets/snvindel.200variants \\
               --resume
 
   4. Restart the conversion from scratch:
-     python3 %(prog)s --input tests/synthetic_catalogue_snvindel.200variants.vcf.gz --output data/processed/snvindel.200variants \\
+     python3 %(prog)s --input data/datasets/snvindel.200variants/raw/synthetic_catalogue_snvindel.200variants.vcf.gz --dataset data/datasets/snvindel.200variants \\
               --overwrite
 
   5. Build lookup Parquet and text summaries:
-     python3 %(prog)s --output data/processed/snvindel.200variants --build-lookup
+     python3 %(prog)s --dataset data/datasets/snvindel.200variants --build-lookup
+     # Lookup files are written by default to data/datasets/snvindel.200variants/lookup_files/
 
   6. Customize processing parameters:
-     python3 %(prog)s --input tests/synthetic_catalogue_snvindel.200variants.vcf.gz --output data/processed/snvindel.200variants \\
+     python3 %(prog)s --input data/datasets/snvindel.200variants/raw/synthetic_catalogue_snvindel.200variants.vcf.gz \\
+              --dataset data/datasets/snvindel.200variants \\
               --chunk-size 25000 --max-file-size 536870912 \\
               --row-group-size 50000 --log-level DEBUG
 
 Input formats:
   Supports VCF and BCF files readable by pysam.
-  Chromosome-specific processing requires an indexed input file.
+  Processing requires an indexed input file.
 
 Output structure:
-  OUTPUT/
-    ├── impact.txt
-    ├── checkpoint.json
-    ├── consequences.txt
-    ├── chromosomes.txt
-    ├── feature_chrom_symbol.parquet
-    ├── id_chrom.parquet
-    └── variants
-        ├── chrom=chr1
-        │   └── part-000000.parquet
-        │── chrom=chr2
-        │   └── part-000000.parquet
-        └── ...
+├── data/
+   └── datasets/
+       ├── <dataset_name>/
+          ├── duckdb/
+          ├── logs/
+          ├── lookup_files/
+          │    ├── id_chrom.parquet
+          │    ├── feature_chrom_symbol.parquet
+          │    ├── impact.txt
+          │    ├── consequences.txt
+          │    └── chromosomes.txt
+          │── parquet/
+          │   ├── checkpoint.json
+          │   └── variants/
+          │       ├── chrom=chr1/part-000000.parquet
+          │       ├── chrom=chr2/part-000000.parquet
+          │       └── ...
+          ├── raw/
+          └── tmp/
+
 
 Notes:
   - Each output row represents one VEP annotation.
@@ -959,6 +1042,7 @@ Notes:
   - --overwrite and --resume cannot be used together.
   - Without --chromosome, --overwrite replaces the entire output directory.
   - --build-lookup does not require --input.
+  - --lookup-output overrides the default data/datasets/<dataset_name>/lookup_files directory.
 """,
     )
 
@@ -972,12 +1056,20 @@ Notes:
         help="Input annotated VCF/BCF file (required for conversion).",
     )
     io_group.add_argument(
-        "--output",
-        "-o",
+        "--dataset",
         type=Path,
         required=True,
         metavar="DIR",
-        help="Output directory for the Parquet dataset and lookup files.",
+        help="Dataset directory used to organize all dataset-specific files.",
+    )
+    io_group.add_argument(
+        "--lookup-output",
+        type=Path,
+        metavar="DIR",
+        help=(
+            "Output directory for lookup Parquet and text files. "
+            "Defaults to data/datasets/<dataset_name>/lookup_files."
+        ),
     )
 
     # Processing options
@@ -1046,9 +1138,10 @@ Notes:
 
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=args.log_level, format="%(asctime)s %(levelname)s %(message)s"
-    )
+    dataset_dir = args.dataset
+    parquet_dir = dataset_dir / "parquet"
+    parquet_dir.mkdir(parents=True, exist_ok=True)
+    (dataset_dir / "raw").mkdir(parents=True, exist_ok=True)
 
     # --chromosome and --resume are mutually exclusive:
     # Specifying a chromosome triggers its reprocessing from scratch.
@@ -1070,10 +1163,17 @@ Notes:
         args.overwrite = True
         args.resume = False
 
+    # Configure logging after argument validation.
+    setup_logging(args.log_level, parquet_dir)
+
+    # Resolve the lookup destination once so all operations use the same dataset-specific path.
+    lookup_output = get_lookup_output_dir(parquet_dir, args.lookup_output)
+    lookup_output.mkdir(parents=True, exist_ok=True)
+
     if args.build_lookup:
         # If building lookup files, we don't need the input file argument
-        build_parquet_for_the_front_form(args.output)
-        build_text_summary_files(args.output)
+        build_parquet_for_the_front_form(parquet_dir, lookup_output)
+        build_text_summary_files(parquet_dir, lookup_output)
     else:
         # If NOT building lookup files, we ARE in parquet conversion mode, so --input is mandatory
         if args.input is None:
@@ -1083,13 +1183,14 @@ Notes:
 
         convert_vcf(
             args.input,
-            args.output,
+            parquet_dir,
             args.chunk_size,
             args.max_file_size,
             args.row_group_size,
             args.chromosome,
             args.resume,
             args.overwrite,
+            lookup_output,
         )
 
 

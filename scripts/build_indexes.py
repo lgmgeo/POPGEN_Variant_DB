@@ -9,11 +9,10 @@ Database indexes:
   idx_feature     Transcript (csq_Feature)
   idx_id          Variant identifier
   idx_symbol      Gene symbol (csq_SYMBOL)
-  idx_af          Allele frequency (AF)
-
 """
 
 import argparse
+import datetime
 import logging
 import re
 import sys
@@ -36,15 +35,15 @@ INDEXES = [
 
 
 # Configure logging to write messages to both stdout and a log file.
-def setup_logging(log_file):
+def setup_logging(log_file, log_level):
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, log_level),
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[
             # Display progress and errors in the terminal.
             logging.StreamHandler(sys.stdout),
             # Persist logs to a file for later review.
-            logging.FileHandler(log_file),
+            logging.FileHandler(log_file, mode="w"),
         ],
     )
 
@@ -80,11 +79,13 @@ def main():
         description="Build or resume indexes on an existing DuckDB database."
     )
     parser.add_argument(
-        "--db",
+        "--dataset",
         type=Path,
         required=True,
-        help="Existing DuckDB database file.",
+        metavar="DIR",
+        help="Dataset directory containing the duckdb/ subdirectory.",
     )
+
     parser.add_argument(
         "--memory-limit",
         default="32GB",
@@ -97,28 +98,30 @@ def main():
         help="Number of DuckDB threads (default: 2).",
     )
     parser.add_argument(
-        "--temp-dir",
-        type=Path,
-        default=Path("/tmp"),
-        help="Directory for temporary files.",
-    )
-    parser.add_argument(
-        "--log",
-        type=Path,
-        default=Path("build_indexes.log"),
-        help="Log file path.",
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="INFO",
+        help="Logging level.",
     )
     args = parser.parse_args()
 
+    dataset_dir = args.dataset
+    dataset_name = dataset_dir.name
+
+    db_path = dataset_dir / "duckdb" / f"{dataset_name}.db"
+    temp_dir = dataset_dir / "tmp"
+
+    log_dir = dataset_dir / "logs"
     # Ensure the directory for the log file exists.
-    args.log.parent.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"build_indexes_{datetime.datetime.now():%Y%m%d}.log"
 
     # Initialize logging before starting database operations.
-    setup_logging(args.log)
+    setup_logging(log_file, args.log_level)
 
     # Validate that the database already exists.
-    if not args.db.is_file():
-        logging.error("Database does not exist: %s", args.db)
+    if not db_path.is_file():
+        logging.error("Database file not found: %s", db_path)
         return 1
 
     # At least one DuckDB thread is required.
@@ -128,15 +131,11 @@ def main():
 
     # Create the temporary directory if necessary.
     # DuckDB may use it for temporary data during query execution.
-    args.temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_dir.mkdir(parents=True, exist_ok=True)
 
     con = None
 
     try:
-        # Open the existing database.
-        logging.info("Opening existing database: %s", args.db)
-        con = duckdb.connect(str(args.db))
-
         # Validate the memory-limit format before passing it to DuckDB.
         # Accepted examples: 32GB, 40GB, 1.5GB.
         if not re.fullmatch(
@@ -146,9 +145,13 @@ def main():
         ):
             raise ValueError("Invalid --memory-limit. Example: 32GB")
 
+        # Open the existing database.
+        logging.info("Opening existing database: %s", db_path)
+        con = duckdb.connect(str(db_path))
+
         # Escape quotes before inserting values into SQL settings.
         memory_limit = args.memory_limit.replace("'", "''")
-        temp_dir = str(args.temp_dir.resolve()).replace("'", "''")
+        temp_dir = str(temp_dir.resolve()).replace("'", "''")
 
         # Configure DuckDB before creating indexes.
         # The memory limit controls DuckDB's managed memory, but does
@@ -200,9 +203,9 @@ def main():
 
             # Request a checkpoint after each successful index creation.
             # This helps persist completed work before proceeding.
-            report_db_sizes(args.db, "Before CHECKPOINT")
+            report_db_sizes(db_path, "Before CHECKPOINT")
             con.execute("CHECKPOINT")
-            report_db_sizes(args.db, "After CHECKPOINT")
+            report_db_sizes(db_path, "After CHECKPOINT")
 
             # Update the in-memory set only after CREATE INDEX and
             # CHECKPOINT have both returned successfully.
@@ -212,7 +215,7 @@ def main():
 
         # Report success only after every configured index is present
         # or has been created successfully.
-        logging.info("All five indexes are present.")
+        logging.info("All configured indexes are present.")
         return 0
 
     except Exception:
