@@ -928,8 +928,7 @@ def build_text_summary_files(parquet_dir, lookup_dir):
     finally:
         con.close()
 
-
-def setup_logging(log_level, output_dir):
+def setup_logging(log_level, output_dir, build_lookup=False):
     """
     Configure logging to write to both a dated log file and the console.
 
@@ -950,7 +949,8 @@ def setup_logging(log_level, output_dir):
 
         script_name = Path(__file__).stem
         date_str = datetime.now().strftime("%Y%m%d")
-        log_file = log_dir / f"{script_name}_{date_str}.log"
+        suffix = "_build-lookup" if build_lookup else ""
+        log_file = log_dir / f"{script_name}{suffix}_{date_str}.log"
 
         logging.basicConfig(
             level=log_level,
@@ -968,6 +968,8 @@ def setup_logging(log_level, output_dir):
         )
 
     logging.info("Log file: %s", log_file)
+
+    return log_file
 
 
 def main():
@@ -1164,7 +1166,11 @@ Notes:
         args.resume = False
 
     # Configure logging after argument validation.
-    setup_logging(args.log_level, parquet_dir)
+    log_file = setup_logging(
+        args.log_level,
+        parquet_dir,
+        build_lookup=args.build_lookup,
+    )
 
     # Resolve the lookup destination once so all operations use the same dataset-specific path.
     lookup_output = get_lookup_output_dir(parquet_dir, args.lookup_output)
@@ -1193,6 +1199,9 @@ Notes:
             lookup_output,
         )
 
+    logging.info("Finished.")
+    logging.info("cf logfile: %s", log_file)
+    
 
 if __name__ == "__main__":
     main()

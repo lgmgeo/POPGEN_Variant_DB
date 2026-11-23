@@ -49,11 +49,12 @@ def setup_logging(log_level, db_output):
 
     logging.info("Log file: %s", log_file)
 
+    return log_file
+
 
 # =============================================================================
 # Core Builder Class
 # =============================================================================
-
 
 class DatabaseBuilder:
     def __init__(self, input_dir: Path, db_path: Path):
@@ -151,7 +152,7 @@ Input structure:
     ├── duckdb/
     │   └── snvindel.200variants.db
     └── logs/
-        └── build_duckdb_<TIMESTAMP>.log
+        └── build_duckdb_YYYYMMDD.log
 
 Notes:
   - The input Parquet dataset must contain the required columns.
@@ -206,13 +207,16 @@ Notes:
     db_dir.mkdir(parents=True, exist_ok=True)
 
     # Initialize console logging
-    setup_logging(args.log_level, db_output)
+    log_file = setup_logging(args.log_level, db_output)
 
     # Run the database builder
     builder = DatabaseBuilder(input_dir, db_output)
 
     try:
         builder.build()
+
+        logging.info("Finished.")
+        logging.info("cf logfile: %s", log_file)
     except Exception:
         sys.exit(1)
 

@@ -171,11 +171,21 @@ else
     exit 1
 fi
 
+# -----------------------------------------------------------------------------
+# STEP 5: Build DuckDB Indexes
+# -----------------------------------------------------------------------------
+echo -e "\n${BLUE}Step 5: Building DuckDB indexes...${NC}"
+
+python3 "$PROJECT_ROOT/scripts/build_indexes.py" \
+    --dataset "$DATASET_DIR"
+
+print_status "DuckDB indexes built successfully."
+
 
 # -----------------------------------------------------------------------------
-# STEP 5: Verify Total Variant Count
+# STEP 6: Verify Total Variant Count
 # -----------------------------------------------------------------------------
-echo -e "\n${BLUE}Step 5: Verifying total variant count...${NC}"
+echo -e "\n${BLUE}Step 6: Verifying total variant count...${NC}"
 
 # Count variants in the source VCF/BCF using bcftools
 SOURCE_COUNT=$(bcftools index -n "$INPUT_VCF")
@@ -208,9 +218,9 @@ fi
 
 
 # -----------------------------------------------------------------------------
-# STEP 6: Verify VEP Annotation Count
+# STEP 7: Verify VEP Annotation Count
 # -----------------------------------------------------------------------------
-echo -e "\n${BLUE}Step 6: Verifying VEP annotation count...${NC}"
+echo -e "\n${BLUE}Step 7: Verifying VEP annotation count...${NC}"
 
 # Count VEP annotations in the source VCF
 SOURCE_COUNT=$(bcftools query -f '%INFO/CSQ\n' "$INPUT_VCF" |

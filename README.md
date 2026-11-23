@@ -31,6 +31,8 @@ data/
 └── datasets/
     └── snvindel.200variants/
         ├── raw/
+        │   ├──synthetic_catalogue_snvindel.200variants.vcf.gz
+        │   └── synthetic_catalogue_snvindel.200variants.vcf.gz.csi
         ├── tmp/
         ├── parquet/
         │   ├── checkpoint.json
@@ -47,6 +49,7 @@ data/
         │   ├── consequences.txt
         │   └── chromosomes.txt
         ├── duckdb/
+        │   └── snvindel.200variants.db
         └── logs/
 ```
 
@@ -65,7 +68,7 @@ data/
 
 3. **Tests with 200 variants**
    ```bash
-   ./tests/run_tests.sh
+   ./tests/run_integration_tests.sh
    ```
 
 ## Usage: Variant to Parquet

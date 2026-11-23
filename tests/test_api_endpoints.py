@@ -1,4 +1,11 @@
+#!/usr/bin/env python3
+
+import sys
 from pathlib import Path
+
+# Add project root to Python import path.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 import duckdb
 import pytest
@@ -80,7 +87,6 @@ def client(monkeypatch):
 # Database helper functions
 # =============================================================================
 
-
 def get_db_value(query, params=()):
     """
     Execute a read-only SQL query against the synthetic DuckDB database.
@@ -121,7 +127,6 @@ def get_db_value(query, params=()):
 # Health endpoint tests
 # =============================================================================
 
-
 def test_health(client):
     """
     Test the /health endpoint.
@@ -151,7 +156,6 @@ def test_health(client):
 # =============================================================================
 # Variant endpoint tests
 # =============================================================================
-
 
 def test_variants_return_expected_columns(client):
     """
@@ -254,7 +258,6 @@ def test_variants_are_deduplicated(client):
 # Coordinate filtering tests
 # =============================================================================
 
-
 def test_filter_by_coordinates(client):
     """
     Test filtering variants using chromosome and genomic coordinates.
@@ -311,7 +314,6 @@ def test_filter_by_coordinates(client):
 # Variant ID filtering tests
 # =============================================================================
 
-
 def test_filter_by_id(client):
     """
     Test filtering variants using their variant identifier.
@@ -354,7 +356,6 @@ def test_filter_by_id(client):
 # =============================================================================
 # Annotation filtering tests
 # =============================================================================
-
 
 @pytest.mark.parametrize(
     ("column", "parameter"),
@@ -438,7 +439,6 @@ def test_annotation_filters(client, column, parameter):
 # gnomAD boolean filtering tests
 # =============================================================================
 
-
 @pytest.mark.parametrize(
     "parameter",
     [
@@ -488,7 +488,6 @@ def test_gnomad_boolean_filters(client, parameter):
 # Allele count and frequency filtering tests
 # =============================================================================
 
-
 def test_filter_by_ac_an_af(client):
     """
     Test numeric filtering using allele count and allele frequency.
@@ -532,7 +531,6 @@ def test_filter_by_ac_an_af(client):
 # =============================================================================
 # Pagination tests
 # =============================================================================
-
 
 def test_pagination(client):
     """
@@ -601,7 +599,6 @@ def test_pagination(client):
 # Empty result tests
 # =============================================================================
 
-
 def test_no_matching_variant(client):
     """
     Test the API behavior when a filter does not match any variant.
@@ -637,7 +634,6 @@ def test_no_matching_variant(client):
 # =============================================================================
 # Input validation tests
 # =============================================================================
-
 
 def test_invalid_coordinate_range(client):
     """
@@ -696,11 +692,11 @@ def test_invalid_frequency_range(client):
     assert response.status_code == 422
 
 
-def test_limit_cannot_exceed_500(client):
+def test_limit_cannot_exceed_100000(client):
     """
     Test the maximum pagination limit.
 
-    The API imposes a maximum limit of 500 variants per request
+    The API imposes a maximum limit of 100000 variants per request
     to prevent excessively large responses.
 
     Requests exceeding this limit should be rejected.
@@ -709,10 +705,10 @@ def test_limit_cannot_exceed_500(client):
     the supplied query parameter violates the API validation rules.
     """
 
-    # Request 501 variants, exceeding the maximum allowed limit of 500.
+    # Request 100001 variants, exceeding the maximum allowed limit of 100000.
     response = client.get(
         "/variants",
-        params={"limit": 501},
+        params={"limit": 100001},
     )
 
     # Verify that the API correctly rejects the excessive limit.

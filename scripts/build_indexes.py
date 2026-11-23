@@ -60,15 +60,15 @@ def report_db_sizes(db_path, label):
     db_path = Path(db_path)
     wal_path = Path(f"{db_path}.wal")
 
-    logging.info(f"\n{label}")
+    logging.info(f"{label}")
 
     for path in (db_path, wal_path):
         if path.exists():
             size_bytes = path.stat().st_size
             size_gb = size_bytes / (1000**3)
-            logging.info(f"  {path}: {size_gb:.2f} GB ({size_bytes:,} bytes)")
+            logging.info(f"- {path}: {size_gb:.2f} GB ({size_bytes:,} bytes)")
         else:
-            logging.info(f"  {path}: does not exist")
+            logging.info(f"- {path}: does not exist")
 
 
 # Parse arguments, configure DuckDB, and create missing indexes.
@@ -195,7 +195,9 @@ def main():
                 logging.info("Skipping existing index: %s", index_name)
                 continue
 
+            logging.info("")
             logging.info("Creating index %s (%s)", index_name, description)
+            logging.info("=====================================================")
 
             # Build the index on the specified column or columns.
             # If this operation fails, the exception is handled below.
@@ -215,8 +217,8 @@ def main():
 
         # Report success only after every configured index is present
         # or has been created successfully.
+        logging.info("")
         logging.info("All configured indexes are present.")
-        return 0
 
     except Exception:
         # Log the exception and traceback to help diagnose failures.
@@ -231,6 +233,10 @@ def main():
         if con is not None:
             con.close()
 
+    logging.info("Finished.")
+    logging.info("cf logfile: %s", log_file)
+
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())
